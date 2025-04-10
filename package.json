@@ -22,12 +22,84 @@
       {
         "command": "modern-clippy.enable",
         "title": "Enable Modern Clippy"
-      }
+      },
+      {
+        "command": "modern-clippy.disable",
+        "title": "Disable Modern Clippy"
+      },
+      {
+        "command": "modern-clippy.tutorMode",
+        "title": "Switch to Tutor Mode"
+      },
+      {
+        "command": "modern-clippy.assistantMode",
+        "title": "Switch to Assistant Mode"
+      },
+      {
+        "command": "modern-clippy.debuggerMode",
+        "title": "Switch to Debugger Mode"
+      },
+      {
+        "command": "modern-clippy.analyzeFile",
+        "title": "Analyze Current File"
+      },
       {
         "command": "modern-clippy.askOpenAI",
         "title": "Ask OpenAI"
+      },
+      {
+        "command": "modern-clippy.openChat",
+        "title": "Open Modern Clippy Chat",
+        "category": "Modern Clippy"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Modern Clippy",
+      "properties": {
+        "modernClippy.apiKey": {
+          "type": "string",
+          "description": "OpenAI API Key for Modern Clippy",
+          "scope": "application"
+        },
+        "modernClippy.defaultMode": {
+          "type": "string",
+          "default": "Tutor",
+          "enum": [
+            "Tutor",
+            "Assistant",
+            "Debugger"
+          ],
+          "description": "Default mode for Modern Clippy"
+        },
+        "modernClippy.analyzeInterval": {
+          "type": "number",
+          "default": 60,
+          "description": "Interval (in seconds) for automatic file analysis"
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "modern-clippy.analyzeFile",
+          "group": "modern-clippy"
+        },
+        {
+          "command": "modern-clippy.askOpenAI",
+          "group": "modern-clippy"
+        }
+      ],
+      "statusBar": [
+        {
+          "command": "modern-clippy.enable",
+          "when": "!modernClippyEnabled"
+        },
+        {
+          "command": "modern-clippy.disable",
+          "when": "modernClippyEnabled"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -45,10 +117,12 @@
     "@typescript-eslint/parser": "^8.22.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "dotenv": "^16.4.7",
     "eslint": "^9.19.0",
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "openai": "^4.93.0"
   }
 }
