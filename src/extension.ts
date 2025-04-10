@@ -142,8 +142,19 @@ context.subscriptions.push(disposable); */
 
     let openChatCommand = vscode.commands.registerCommand('modern-clippy.openChat', () => {
 		ChatPanel.createOrShow(extensionContext.extensionUri, extensionContext);
+
+        // Summarize and display knowledge map
+		const summary = summarizeKnowledgeMap();
+		ChatPanel.postMessage({ command: 'showResponse', text: summary });
 	});
 	context.subscriptions.push(openChatCommand);
+
+    context.subscriptions.push(vscode.commands.registerCommand('modern-clippy.showKnowledgeMap', () => {
+        ChatPanel.createOrShow(extensionContext.extensionUri, extensionContext);
+        const summary = summarizeKnowledgeMap();
+        ChatPanel.postMessage({ command: 'showResponse', text: summary });
+      }));
+      
 }
 
 
@@ -190,16 +201,81 @@ function getSimpleDiff(oldContent:string, newContent:string): string {
 	return addedLines.join('\n');
 }
 
-function getSystemPromt(): string{
+function getSystemPromt(userPrompt: string = ""): string{
+
+    const contextHints = knowledgeMap.global.concepts.join(", ").toLowerCase();
+    const combined = `${contextHints} ${userPrompt.toLowerCase()}`;
+
+    if (/debug|error|exception|fix|broken/.test(combined)) {
+        currentMode = "Debugger";
+    } else if (/optimize|improve|refactor/.test(combined)) {
+        currentMode = "Assistant";
+    } else {
+        currentMode = "Tutor";
+    }
+
 	switch (currentMode) {
 		case "Tutor":
-            return "You're a patient programming tutor. Teach the user missing concepts.";
+            // return "You're a patient programming tutor. Teach the user missing concepts.";
+
+            /* return `You're a patient programming tutor. Break down your explanation using:
+            - **Bold** titles
+            - Bullet points for steps
+            - Use markdown code blocks (with syntax highlighting) for any code examples.
+            Keep it short and focused.`; */
+
+            /* return `You are a patient and Socratic programming tutor.
+            Guide the user to think critically by:
+            - Asking helpful questions instead of giving direct answers.
+            - Pointing out what concepts are missing.
+            - Suggesting what to look into next.
+            - If necessary, use partial code snippets or pseudocode to illustrate ideas, but avoid providing complete solutions.
+            Respond in markdown format.`; */
+
+            return `You are a patient programming tutor.
+            Guide the user to think critically by:
+            - Asking helpful questions instead of giving direct answers.
+            - Pointing out what concepts are missing.
+            - Suggesting what to look into next.
+            - If necessary, use partial code snippets or pseudocode to illustrate ideas, but avoid providing complete solutions.
+            Respond in markdown format. Keep it short and focused.`;
+
+       /*  case "Assistant":
+            return "You're a helpful coding assistant. Suggest improvements and productivity tips."; */
         case "Assistant":
-            return "You're a helpful coding assistant. Suggest improvements and productivity tips.";
+            return `You are a helpful coding assistant focused on improving productivity and code quality.
+                When responding:
+                    - Suggest specific improvements to make code more efficient, readable, and maintainable.
+                    - Offer practical productivity tips relevant to the user's development environment or workflow.
+                    - Share keyboard shortcuts, extensions, and best practices that could speed up their work.
+                    - Explain the reasoning behind your suggestions to help the user learn.
+                    - Provide links to relevant documentation when appropriate.
+                    - Always format code examples with proper markdown syntax.
+                    - Keep responses concise but thorough, with concrete examples.`;
+       /*  case "Debugger":
+            return "You're a precise code reviewer. Identify bugs and suggest corrections."; */
         case "Debugger":
-            return "You're a precise code reviewer. Identify bugs and suggest corrections.";
+            return `You are a precise code reviewer and debugger with attention to detail.
+               When analyzing code:
+                    - Methodically examine the code for logical errors, syntax issues, and edge cases.
+                    - Identify potential bugs, performance bottlenecks, and security vulnerabilities.
+                    - Suggest specific corrections with explanations of why the bug occurs.
+                    - Highlight patterns that might lead to future bugs.
+                    - Recommend testing strategies to verify fixes and prevent regressions.
+                    - When appropriate, suggest debugging techniques or tools specific to the language.
+                    - Format all code with proper syntax highlighting using markdown.
+                    - Provide both quick fixes and deeper architectural improvements when relevant.`;
+            
         default:
-            return "You're a programming helper.";
+            return `You are a versatile programming helper.
+                Your approach should be:
+                    - Friendly and approachable, focusing on the user's immediate needs.
+                    - Balanced between offering assistance and educational content.
+                    - Flexible in providing either quick answers or in-depth explanations based on context.
+                    - Clear in your explanations, using analogies and examples where helpful.
+                    - Precise with your code examples, using proper markdown formatting.
+                    - Mindful of best practices while remaining practical.
+                    - Responsive to the user's expertise level, adjusting your language accordingly.`;
 	}
 }
 
@@ -240,9 +316,6 @@ async function buildKnowledgeMap() {
     // Optionally log or store knowledge map
     console.log("Knowledge Map Updated: ", knowledgeMap);
 }
-
-
-
 
 // Function to extract imports based on language
 function extractImports(fileContent: string, language: string): string[] {
@@ -336,6 +409,28 @@ function extractConcepts(fileContent: string, language: string): string[] {
     }
 
     return concepts;
+}
+
+function summarizeKnowledgeMap(): string {
+	const fileSummaries = Object.entries(knowledgeMap.files).map(([file, data]) => {
+		return `**${file}**
+        - Language: ${data.language}
+        - Imports: ${data.imports.join(', ') || 'None'}
+        - Functions: ${data.functions.join(', ') || 'None'}
+        - Variables: ${data.variables.join(', ') || 'None'}
+        - Concepts: ${data.concepts.join(', ') || 'None'}`;
+	}).join("");
+
+	const globalSummary = `**Global Summary**
+- Libraries: ${knowledgeMap.global.libraries.join(', ') || 'None'}
+- Functions: ${knowledgeMap.global.functions.join(', ') || 'None'}
+- Concepts: ${knowledgeMap.global.concepts.join(', ') || 'None'}`;
+
+	return `### Knowledge Map
+
+${fileSummaries}
+
+${globalSummary}`;
 }
 
 // Modify the mode switching functionality

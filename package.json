@@ -51,6 +51,10 @@
         "command": "modern-clippy.openChat",
         "title": "Open Modern Clippy Chat",
         "category": "Modern Clippy"
+      },
+      {
+        "command": "modern-clippy.showKnowledgeMap",
+        "title": "Modern Clippy: Show Knowledge Map"
       }
     ],
     "configuration": {

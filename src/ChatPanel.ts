@@ -50,7 +50,7 @@ export class ChatPanel {
                         break;
                 }
             },
-            null,
+            undefined,
             this._disposables
         );
     }
@@ -66,6 +66,7 @@ export class ChatPanel {
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
                 <title>Modern Clippy Chat</title>
                 <style>
                     body { font-family: sans-serif; padding: 1em; }
@@ -88,7 +89,7 @@ export class ChatPanel {
                     window.addEventListener('message', event => {
                         const message = event.data;
                         if (message.command === 'showResponse') {
-                            document.getElementById('response').textContent = message.text;
+                            document.getElementById('response').innerHTML = marked.parse(message.text);
                         }
                     });
                 </script>
