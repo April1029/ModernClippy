@@ -124,11 +124,11 @@ context.subscriptions.push(disposable); */
 	let openAICommand = vscode.commands.registerCommand('modern-clippy.askOpenAI', async () => {
 		const editor = vscode.window.activeTextEditor;
 		if (!editor) {
-			vscode.window.showErrorMessage("Open a file to interact with OpenAI");
+			vscode.window.showErrorMessage("Open a file to interact with ModernClippy");
 			return;
 		}
 
-		const prompt = await vscode.window.showInputBox({ placeHolder: "Ask a question to OpenAI" });
+		const prompt = await vscode.window.showInputBox({ placeHolder: "Ask a question to ModernClippy" });
 		if (!prompt) {
 			return;
 		}
@@ -158,7 +158,6 @@ context.subscriptions.push(disposable); */
       }));
       
 }
-
 
 function startModernClippy(context: vscode.ExtensionContext) {
 	vscode.window.showInformationMessage("Modern Clippy is now enabled!");
@@ -510,13 +509,13 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
             if (modeOverride != "Chat"){
                 userContent = `Analyze this code and suggest improvements or missing knowledge:\n\n${modifiedContent}` ;
             }
-            else{
-                if (chatHistory.length == 0) {
-                    chatHistory.push({ role: "system", content: systemPrompt});
-                }
-                chatHistory.push({role:"user", content:modifiedContent});
-
+            
+            if (chatHistory.length == 0) {
+                chatHistory.push({ role: "system", content: systemPrompt});
             }
+            chatHistory.push({role:"user", content:modifiedContent});
+
+            
                 
             const response = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: "POST",
@@ -526,10 +525,7 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
                 },
                 body: JSON.stringify({
                     model: "gpt-3.5-turbo",
-                    messages: [
-                        { role: "system", content: systemPrompt }, // Use the dynamic system prompt
-                        { role: "user", content: userContent }
-                    ],
+                    messages: chatHistory,
                     temperature: 0.7
                 })
             });
