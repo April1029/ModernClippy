@@ -45,7 +45,14 @@ export class ChatPanel {
             async message => {
                 switch (message.command) {
                     case 'askOpenAI':
-                        const response = await vscode.commands.executeCommand('modern-clippy.askOpenAIFromPanel', message.text);
+                        let response;
+                        response = await vscode.commands.executeCommand(
+                            'modern-clippy.askOpenAIFromPanel',
+                            message.text,
+                            message.mode 
+                        );
+                        
+
                         this._panel.webview.postMessage({ command: 'showResponse', text: response });
                         break;
                 }
@@ -83,7 +90,7 @@ export class ChatPanel {
                     const vscode = acquireVsCodeApi();
                     function sendMessage() {
                         const input = document.getElementById('input').value;
-                        vscode.postMessage({ command: 'askOpenAI', text: input });
+                        vscode.postMessage({ command: 'askOpenAI', text: input, mode:'Chat' });
                     }
 
                     window.addEventListener('message', event => {

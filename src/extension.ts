@@ -8,11 +8,13 @@ interface OpenAIResponse {
     error?: { message: string };
 }
 
-type Mode = "Tutor" | "Assistant" | "Debugger";
+type Mode = "Tutor" | "Assistant" | "Debugger" | "Chat";
 let currentMode: Mode = "Tutor"; // default
 
 let lastSentContent: string ="";
 let extensionContext: vscode.ExtensionContext;
+let chatHistory: { role: 'system' | 'user' | 'assistant', content: string }[] = [];
+
 
 interface KnowledgeMap {
     files: {
@@ -134,8 +136,8 @@ context.subscriptions.push(disposable); */
 	});
 	context.subscriptions.push(openAICommand);
 
-    let askOpenAIFromPanelCommand = vscode.commands.registerCommand('modern-clippy.askOpenAIFromPanel', async (text: string) => {
-        const response = await callOpenAI(text);
+    let askOpenAIFromPanelCommand = vscode.commands.registerCommand('modern-clippy.askOpenAIFromPanel', async (text: string, mode?: Mode) => {
+        const response = await callOpenAI(text, false, mode);
         return response;
     });
     context.subscriptions.push(askOpenAIFromPanelCommand);
@@ -201,12 +203,14 @@ function getSimpleDiff(oldContent:string, newContent:string): string {
 	return addedLines.join('\n');
 }
 
-function getSystemPromt(userPrompt: string = ""): string{
+function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
 
     const contextHints = knowledgeMap.global.concepts.join(", ").toLowerCase();
     const combined = `${contextHints} ${userPrompt.toLowerCase()}`;
 
-    if (/debug|error|exception|fix|broken/.test(combined)) {
+    if (modeOverride) {
+        currentMode = modeOverride;
+    } else if (/debug|error|exception|fix|broken/.test(combined)) {
         currentMode = "Debugger";
     } else if (/optimize|improve|refactor/.test(combined)) {
         currentMode = "Assistant";
@@ -238,7 +242,8 @@ function getSystemPromt(userPrompt: string = ""): string{
             - Pointing out what concepts are missing.
             - Suggesting what to look into next.
             - If necessary, use partial code snippets or pseudocode to illustrate ideas, but avoid providing complete solutions.
-            Respond in markdown format. Keep it short and focused.`;
+            Respond in markdown format. Keep it short and focused.
+            - One step at a time.`;
 
        /*  case "Assistant":
             return "You're a helpful coding assistant. Suggest improvements and productivity tips."; */
@@ -265,6 +270,13 @@ function getSystemPromt(userPrompt: string = ""): string{
                     - When appropriate, suggest debugging techniques or tools specific to the language.
                     - Format all code with proper syntax highlighting using markdown.
                     - Provide both quick fixes and deeper architectural improvements when relevant.`;
+        case "Chat":
+            return `You are Modern Clippy, a friendly AI coding companion.
+                - Keep it casual and conversational.
+                - Use emojis when helpful 😄.
+                - Add fun programming facts or jokes if the user seems relaxed.
+                - Don't overexplain unless asked.
+                - Encourage curiosity, and be encouraging!`;
             
         default:
             return `You are a versatile programming helper.
@@ -278,7 +290,6 @@ function getSystemPromt(userPrompt: string = ""): string{
                     - Responsive to the user's expertise level, adjusting your language accordingly.`;
 	}
 }
-
 
 async function buildKnowledgeMap() {
     const editor = vscode.window.activeTextEditor;
@@ -452,7 +463,7 @@ function switchMode(mode: Mode) {
 }
 
 
-async function callOpenAI(modifiedContent: string, displayInPanel = false): Promise<string> {
+async function callOpenAI(modifiedContent: string, displayInPanel = false, modeOverride?:Mode): Promise<string> {
 	
     let apiKey = await extensionContext.secrets.get('openai-api-key');
     let retryCount = 0;
@@ -494,6 +505,19 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false): Prom
         }
         
         try {
+            const systemPrompt = getSystemPromt(modifiedContent, modeOverride);
+            let userContent = modifiedContent;
+            if (modeOverride != "Chat"){
+                userContent = `Analyze this code and suggest improvements or missing knowledge:\n\n${modifiedContent}` ;
+            }
+            else{
+                if (chatHistory.length == 0) {
+                    chatHistory.push({ role: "system", content: systemPrompt});
+                }
+                chatHistory.push({role:"user", content:modifiedContent});
+
+            }
+                
             const response = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -503,8 +527,8 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false): Prom
                 body: JSON.stringify({
                     model: "gpt-3.5-turbo",
                     messages: [
-                        { role: "system", content: getSystemPromt() }, // Use the dynamic system prompt
-                        { role: "user", content: `Analyze this code and suggest improvements or missing knowledge:\n\n${modifiedContent}` }
+                        { role: "system", content: systemPrompt }, // Use the dynamic system prompt
+                        { role: "user", content: userContent }
                     ],
                     temperature: 0.7
                 })
@@ -536,6 +560,7 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false): Prom
                 ChatPanel.postMessage({ command: 'showResponse', text: content });
                 return "";
             }
+            chatHistory.push({role:"assistant",content});
             return content;
 
         } catch (error) {
