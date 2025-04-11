@@ -98,7 +98,7 @@ context.subscriptions.push(disposable); */
 
 	// Register the command to scan the document periodically
 	// Set up the interval to periodically scan the file
-	let scanInterval = setInterval(() => analyzeFile(), 5000); // 60 seconds
+	let scanInterval = setInterval(() => analyzeFile(), 20000); // 20 seconds
 	context.subscriptions.push({ dispose: () => clearInterval(scanInterval) });
 
 	let analyzeFileCommand = vscode.commands.registerCommand('modern-clippy.analyzeFile', async () => {
