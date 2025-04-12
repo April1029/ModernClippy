@@ -506,17 +506,32 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
         try {
             const systemPrompt = getSystemPromt(modifiedContent, modeOverride);
             let userContent = modifiedContent;
-            if (modeOverride != "Chat"){
+            let messages;
+
+            if (modeOverride == "Chat"){
+                // Initialize chat history
+                if (chatHistory.length == 0) {
+                    chatHistory.push({ role:"system", content: systemPrompt});
+                }
+
+                chatHistory.push({role:"user", content:modifiedContent});
+                messages = chatHistory;
+            } else {
+                // code related modes, no history needed since code itself is self-explainable
+                messages = [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: modifiedContent }
+                ];
+            }
+            /* if (modeOverride != "Chat"){
                 userContent = `Analyze this code and suggest improvements or missing knowledge:\n\n${modifiedContent}` ;
             }
             
             if (chatHistory.length == 0) {
                 chatHistory.push({ role: "system", content: systemPrompt});
             }
-            chatHistory.push({role:"user", content:modifiedContent});
+            chatHistory.push({role:"user", content:modifiedContent}); */
 
-            
-                
             const response = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -525,7 +540,7 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
                 },
                 body: JSON.stringify({
                     model: "gpt-3.5-turbo",
-                    messages: chatHistory,
+                    messages,
                     temperature: 0.7
                 })
             });
@@ -556,7 +571,12 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
                 ChatPanel.postMessage({ command: 'showResponse', text: content });
                 return "";
             }
-            chatHistory.push({role:"assistant",content});
+
+            // only upte chathistory when in chat mode
+            if (modeOverride === "Chat") {
+                chatHistory.push({ role: "assistant", content });
+            }
+            
             return content;
 
         } catch (error) {
