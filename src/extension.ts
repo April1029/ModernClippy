@@ -24,17 +24,26 @@ interface KnowledgeMap {
             functions: string[];
             variables: string[];
             dependencies: string[];
-            concepts: string[];
+            concepts: { [concept: string]: number }; // frequency map
+            lastModified: number;
         };
     };
     global: {
         functions: string[];
         libraries: string[];
-        concepts: string[];
+        concepts: { [concept: string]: number };
     };
 }
 
-let knowledgeMap: KnowledgeMap = { files: {}, global: { functions: [], libraries: [], concepts: [] } };
+let knowledgeMap: KnowledgeMap = {
+    files: {},
+    global: {
+        functions: [],
+        libraries: [],
+        concepts: {},
+    },
+};
+
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -142,7 +151,8 @@ context.subscriptions.push(disposable); */
     });
     context.subscriptions.push(askOpenAIFromPanelCommand);
 
-    let openChatCommand = vscode.commands.registerCommand('modern-clippy.openChat', () => {
+    let openChatCommand = vscode.commands.registerCommand('modern-clippy.openChat', async() => {
+        await buildKnowledgeMap();
 		ChatPanel.createOrShow(extensionContext.extensionUri, extensionContext);
 
         // Summarize and display knowledge map
@@ -151,12 +161,39 @@ context.subscriptions.push(disposable); */
 	});
 	context.subscriptions.push(openChatCommand);
 
+    // Rigister clear chathistory command
+    let clearChatHistoryCommand = vscode.commands.registerCommand('modern-clippy.clearChatHistory', () => {
+        chatHistory = [];
+        vscode.window.showInformationMessage("Chat history cleared!");
+    });
+    context.subscriptions.push(clearChatHistoryCommand);
+    
+
     context.subscriptions.push(vscode.commands.registerCommand('modern-clippy.showKnowledgeMap', () => {
         ChatPanel.createOrShow(extensionContext.extensionUri, extensionContext);
         const summary = summarizeKnowledgeMap();
         ChatPanel.postMessage({ command: 'showResponse', text: summary });
-      }));
-      
+      }))
+    
+    let refreshKnowledgeMapCommand = vscode.commands.registerCommand('modern-clippy.refreshKnowledgeMap', async () => {
+        await buildKnowledgeMap();
+        vscode.window.showInformationMessage("Knowledge Map updated.");
+    });
+    context.subscriptions.push(refreshKnowledgeMapCommand);
+
+    let showChatHistoryCommand = vscode.commands.registerCommand('modern-clippy.showChatHistory', () => {
+        const formatted = chatHistory.map(
+            (entry, index) => `${index + 1}. **${entry.role}**: ${entry.content.slice(0, 100)}...`
+        ).join('\n\n');
+    
+        const preview = formatted || "Chat history is currently empty.";
+    
+        vscode.window.showInformationMessage("Chat history preview copied to clipboard.");
+        vscode.env.clipboard.writeText(preview);
+    });
+    
+    context.subscriptions.push(showChatHistoryCommand);
+    
 }
 
 function startModernClippy(context: vscode.ExtensionContext) {
@@ -169,7 +206,9 @@ function startModernClippy(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() { }
+export function deactivate() { 
+    chatHistory = [];
+}
 
 async function analyzeFile() {
 	const editor = vscode.window.activeTextEditor;
@@ -186,6 +225,7 @@ async function analyzeFile() {
 
 	const diff = getSimpleDiff(lastSentContent, fileContent);
 	if (!diff.trim()) return;
+    await buildKnowledgeMap();
 
 	const shouldDisplayInPanel = true; 
     const response = await callOpenAI(diff, shouldDisplayInPanel);
@@ -204,7 +244,8 @@ function getSimpleDiff(oldContent:string, newContent:string): string {
 
 function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
 
-    const contextHints = knowledgeMap.global.concepts.join(", ").toLowerCase();
+    const contextHints = Object.keys(knowledgeMap.global.concepts).join(", ").toLowerCase();
+
     const combined = `${contextHints} ${userPrompt.toLowerCase()}`;
 
     if (modeOverride) {
@@ -302,6 +343,7 @@ async function buildKnowledgeMap() {
     const functions = extractFunctions(fileContent); // Custom function to extract function names
     const variables = extractVariables(fileContent); // Custom function to extract variable names
     const concepts = extractConcepts(fileContent, fileLanguage); // Custom function to extract concepts like loops, etc.
+    const now = Date.now();
 
     // Update the knowledge map for this specific file
     knowledgeMap.files[fileName] = {
@@ -310,20 +352,27 @@ async function buildKnowledgeMap() {
         functions,
         variables,
         dependencies: imports, // Can link dependencies here
-        concepts
+        concepts,
+        lastModified: now,
     };
 
-    // Update the global knowledge base
-    knowledgeMap.global.functions.push(...functions);
-    knowledgeMap.global.libraries.push(...imports);
-    knowledgeMap.global.concepts.push(...concepts);
+     // Update global knowledge
+     knowledgeMap.global.functions = Array.from(new Set([
+        ...knowledgeMap.global.functions,
+        ...functions
+    ]));
 
-    // Make sure to remove duplicates
-    knowledgeMap.global.functions = Array.from(new Set(knowledgeMap.global.functions));
-    knowledgeMap.global.libraries = Array.from(new Set(knowledgeMap.global.libraries));
-    knowledgeMap.global.concepts = Array.from(new Set(knowledgeMap.global.concepts));
+    knowledgeMap.global.libraries = Array.from(new Set([
+        ...knowledgeMap.global.libraries,
+        ...imports
+    ]));
 
-    // Optionally log or store knowledge map
+    for (const [concept, count] of Object.entries(concepts)) {
+        knowledgeMap.global.concepts[concept] =
+            (knowledgeMap.global.concepts[concept] || 0) + count;
+    }
+
+    //log knowledge map
     console.log("Knowledge Map Updated: ", knowledgeMap);
 }
 
@@ -384,11 +433,9 @@ function extractVariables(fileContent: string): string[] {
 }
 
 // Function to extract programming concepts
-function extractConcepts(fileContent: string, language: string): string[] {
-    const concepts: string[] = [];
-    
-    // Common programming concepts across languages
-    const conceptPatterns = [
+function extractConcepts(fileContent: string, language: string): { [concept: string]: number } {
+    const conceptCounts: { [concept: string]: number } = {};
+    const patterns = [
         { regex: /\bif\b/g, concept: 'Conditional Statements' },
         { regex: /\bfor\b/g, concept: 'Loops' },
         { regex: /\bwhile\b/g, concept: 'Loops' },
@@ -399,42 +446,53 @@ function extractConcepts(fileContent: string, language: string): string[] {
         { regex: /\breduce\b|\bmap\b|\bfilter\b/g, concept: 'Higher-Order Functions' }
     ];
 
-    conceptPatterns.forEach(pattern => {
-        if (pattern.regex.test(fileContent)) {
-            concepts.push(pattern.concept);
+    patterns.forEach(({ regex, concept }) => {
+        const matches = fileContent.match(regex);
+        if (matches) {
+            conceptCounts[concept] = (conceptCounts[concept] || 0) + matches.length;
         }
     });
 
-    // Language-specific concepts
-    switch (language) {
-        case 'typescript':
-        case 'javascript':
-            if (/interface\b/.test(fileContent)) concepts.push('TypeScript Interfaces');
-            if (/async\b/.test(fileContent)) concepts.push('Asynchronous Programming');
-            break;
-        case 'python':
-            if (/def\b/.test(fileContent)) concepts.push('Function Definitions');
-            if (/class\b/.test(fileContent)) concepts.push('Class Definitions');
-            break;
+    if (language === 'typescript' || language === 'javascript') {
+        if (/interface\b/.test(fileContent)) {
+            conceptCounts['TypeScript Interfaces'] = (conceptCounts['TypeScript Interfaces'] || 0) + 1;
+        }
+        if (/async\b/.test(fileContent)) {
+            conceptCounts['Asynchronous Programming'] = (conceptCounts['Asynchronous Programming'] || 0) + 1;
+        }
+    } else if (language === 'python') {
+        if (/def\b/.test(fileContent)) {
+            conceptCounts['Function Definitions'] = (conceptCounts['Function Definitions'] || 0) + 1;
+        }
+        if (/class\b/.test(fileContent)) {
+            conceptCounts['Class Definitions'] = (conceptCounts['Class Definitions'] || 0) + 1;
+        }
     }
 
-    return concepts;
+    return conceptCounts;
 }
 
 function summarizeKnowledgeMap(): string {
 	const fileSummaries = Object.entries(knowledgeMap.files).map(([file, data]) => {
+        const conceptList = Object.entries(data.concepts)
+            .map(([concept, count]) => `${concept} (${count})`)
+            .join(', ') || 'None';
 		return `**${file}**
         - Language: ${data.language}
         - Imports: ${data.imports.join(', ') || 'None'}
         - Functions: ${data.functions.join(', ') || 'None'}
         - Variables: ${data.variables.join(', ') || 'None'}
-        - Concepts: ${data.concepts.join(', ') || 'None'}`;
+        - Concepts: ${conceptList}`;
 	}).join("");
+
+    const globalConceptList = Object.entries(knowledgeMap.global.concepts)
+        .map(([concept, count]) => `${concept} (${count})`)
+        .join(', ') || 'None';
 
 	const globalSummary = `**Global Summary**
 - Libraries: ${knowledgeMap.global.libraries.join(', ') || 'None'}
 - Functions: ${knowledgeMap.global.functions.join(', ') || 'None'}
-- Concepts: ${knowledgeMap.global.concepts.join(', ') || 'None'}`;
+- Concepts: ${globalConceptList}`;
 
 	return `### Knowledge Map
 

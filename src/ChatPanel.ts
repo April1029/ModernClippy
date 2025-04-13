@@ -96,6 +96,9 @@ export class ChatPanel {
                     --code-border: #444;
                     --avatar-size: 28px;
                     --timestamp-color: #888;
+                    --danger-color: #e74c3c;
+                    --danger-color-hover: #c0392b;
+                    --button-hover: #2d2d2d;
                 }
     
                 * {
@@ -119,9 +122,15 @@ export class ChatPanel {
                 #app-header {
                     display: flex;
                     align-items: center;
+                    justify-content: space-between;
                     padding: 8px 16px;
                     background-color: var(--bg-color);
                     border-bottom: 1px solid var(--border);
+                }
+                
+                .header-left {
+                    display: flex;
+                    align-items: center;
                 }
     
                 #app-title {
@@ -129,6 +138,28 @@ export class ChatPanel {
                     font-weight: 500;
                     color: var(--text-color);
                     margin-left: 8px;
+                }
+                
+                #clear-chat {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: transparent;
+                    color: var(--text-color);
+                    border: 1px solid var(--border);
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    cursor: pointer;
+                    transition: all var(--transition-speed) ease;
+                }
+                
+                #clear-chat:hover {
+                    background-color: var(--button-hover);
+                    color: var(--danger-color);
+                }
+                
+                #clear-chat svg {
+                    margin-right: 0;
                 }
     
                 #chat {
@@ -309,16 +340,101 @@ export class ChatPanel {
                 @keyframes spin {
                     to { transform: rotate(360deg); }
                 }
+                
+                /* Confirmation dialog styles */
+                .overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 1000;
+                    animation: fadeIn 0.2s ease;
+                }
+                
+                .dialog {
+                    background-color: var(--bg-color);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                    padding: 16px;
+                    width: 300px;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                }
+                
+                .dialog-title {
+                    font-size: 16px;
+                    font-weight: 500;
+                    margin-bottom: 12px;
+                    color: var(--text-color);
+                }
+                
+                .dialog-message {
+                    margin-bottom: 20px;
+                    color: var(--text-color);
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+                
+                .dialog-buttons {
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 8px;
+                }
+                
+                .dialog-btn {
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    cursor: pointer;
+                    transition: background-color var(--transition-speed) ease;
+                }
+                
+                .btn-cancel {
+                    background-color: transparent;
+                    border: 1px solid var(--border);
+                    color: var(--text-color);
+                }
+                
+                .btn-cancel:hover {
+                    background-color: var(--button-hover);
+                }
+                
+                .btn-confirm {
+                    background-color: var(--danger-color);
+                    border: none;
+                    color: white;
+                }
+                
+                .btn-confirm:hover {
+                    background-color: var(--danger-color-hover);
+                }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
             </style>
         </head>
         <body>
             <div id="app-header">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#0e639c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M2 17L12 22L22 17" stroke="#0e639c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M2 12L12 17L22 12" stroke="#0e639c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span id="app-title">Modern Clippy Chat</span>
+                <div class="header-left">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#0e639c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="#0e639c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="#0e639c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span id="app-title">Modern Clippy Chat</span>
+                </div>
+                <button id="clear-chat" title="Clear Chat History">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
             <div id="chat"></div>
             <div id="input-area">
@@ -436,6 +552,89 @@ export class ChatPanel {
                     chat.appendChild(container);
                     chat.scrollTop = chat.scrollHeight;
                 }
+    
+                function clearChatHistory() {
+                    showConfirmDialog(
+                        "Clear Chat History",
+                        "Are you sure you want to clear the chat history? This action cannot be undone.",
+                        () => {
+                            // Clear the chat UI
+                            document.getElementById('chat').innerHTML = '';
+                            
+                            // Send command to extension
+                            vscode.postMessage({ command: 'clearChatHistory' });
+                            
+                            // Add welcome message after clearing
+                            setTimeout(() => {
+                                appendMessage("👋 Chat history cleared. How can I help you today?", 'clippy');
+                            }, 300);
+                        }
+                    );
+                }
+                
+                function showConfirmDialog(title, message, onConfirm) {
+                    // Create overlay
+                    const overlay = document.createElement('div');
+                    overlay.className = 'overlay';
+                    
+                    // Create dialog
+                    const dialog = document.createElement('div');
+                    dialog.className = 'dialog';
+                    
+                    // Add title
+                    const dialogTitle = document.createElement('div');
+                    dialogTitle.className = 'dialog-title';
+                    dialogTitle.textContent = title;
+                    dialog.appendChild(dialogTitle);
+                    
+                    // Add message
+                    const dialogMessage = document.createElement('div');
+                    dialogMessage.className = 'dialog-message';
+                    dialogMessage.textContent = message;
+                    dialog.appendChild(dialogMessage);
+                    
+                    // Add buttons
+                    const dialogButtons = document.createElement('div');
+                    dialogButtons.className = 'dialog-buttons';
+                    
+                    // Cancel button
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.className = 'dialog-btn btn-cancel';
+                    cancelBtn.textContent = 'Cancel';
+                    cancelBtn.onclick = () => {
+                        document.body.removeChild(overlay);
+                    };
+                    dialogButtons.appendChild(cancelBtn);
+                    
+                    // Confirm button
+                    const confirmBtn = document.createElement('button');
+                    confirmBtn.className = 'dialog-btn btn-confirm';
+                    confirmBtn.textContent = 'Clear';
+                    confirmBtn.onclick = () => {
+                        onConfirm();
+                        document.body.removeChild(overlay);
+                    };
+                    dialogButtons.appendChild(confirmBtn);
+                    
+                    dialog.appendChild(dialogButtons);
+                    overlay.appendChild(dialog);
+                    document.body.appendChild(overlay);
+                    
+                    // Focus on cancel button by default (safer option)
+                    cancelBtn.focus();
+                    
+                    // Allow ESC key to dismiss
+                    const handleKeyDown = (e) => {
+                        if (e.key === 'Escape') {
+                            document.body.removeChild(overlay);
+                            document.removeEventListener('keydown', handleKeyDown);
+                        }
+                    };
+                    document.addEventListener('keydown', handleKeyDown);
+                }
+    
+                // Handle clear chat button
+                document.getElementById('clear-chat').addEventListener('click', clearChatHistory);
     
                 window.addEventListener('message', event => {
                     const message = event.data;

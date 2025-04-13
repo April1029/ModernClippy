@@ -53,9 +53,23 @@
         "category": "Modern Clippy"
       },
       {
+        "command": "modern-clippy.clearChat",
+        "title": "Clear Modern Clippy Chat",
+        "category": "Modern Clippy"
+      },
+      {
         "command": "modern-clippy.showKnowledgeMap",
         "title": "Modern Clippy: Show Knowledge Map"
+      },
+      {
+        "command": "modern-clippy.refreshKnowledgeMap",
+        "title": "Modern Clippy: Manually Refresh Knowledge Map"
+      },
+      {
+        "command": "modern-clippy.showChatHistory",
+        "title": "Modern Clippy: Show Chat History"
       }
+
     ],
     "configuration": {
       "title": "Modern Clippy",
