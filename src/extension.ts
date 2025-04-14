@@ -13,7 +13,12 @@ let currentMode: Mode = "Tutor"; // default
 
 let lastSentContent: string ="";
 let extensionContext: vscode.ExtensionContext;
-let chatHistory: { role: 'system' | 'user' | 'assistant', content: string }[] = [];
+let chatHistory: { 
+    role: 'system' | 'user' | 'assistant', 
+    content: string, 
+    mode?: Mode 
+}[] = [];
+
 
 
 interface KnowledgeMap {
@@ -182,9 +187,18 @@ context.subscriptions.push(disposable); */
     context.subscriptions.push(refreshKnowledgeMapCommand);
 
     let showChatHistoryCommand = vscode.commands.registerCommand('modern-clippy.showChatHistory', () => {
+        /* const formatted = chatHistory.map(
+            (entry, index) => `${index + 1}. **${entry.role}**: ${entry.content}...`
+        ).join('\n\n'); */
+
         const formatted = chatHistory.map(
-            (entry, index) => `${index + 1}. **${entry.role}**: ${entry.content.slice(0, 100)}...`
+            (entry, index) => {
+                const modeSuffix = entry.mode ? ` (mode: ${entry.mode})` : "";
+                return `${index + 1}. **${entry.role}${modeSuffix}**: ${entry.content}...`;
+            }
         ).join('\n\n');
+        
+        
     
         const preview = formatted || "Chat history is currently empty.";
     
@@ -519,6 +533,26 @@ function switchMode(mode: Mode) {
     }
 }
 
+function getFilteredMessagesForMode(mode: Mode): { role: 'system' | 'user' | 'assistant', content: string }[] {
+    const relevantRoles = ['system', 'user', 'assistant'];
+
+    // we want different filters per mode
+    switch (mode) {
+        case "Chat":
+            return chatHistory;
+        case "Debugger":
+        case "Assistant":
+        case "Tutor":
+            return chatHistory.filter(msg =>
+                msg.role === 'system' || 
+                msg.role === 'assistant' ||
+                (msg.role === 'user' ) // optional: skip huge prior inputs && msg.content.length < 2000
+            ).slice(-6); // optional: only last 6 interactions
+        default:
+            return chatHistory;
+    }
+}
+
 
 async function callOpenAI(modifiedContent: string, displayInPanel = false, modeOverride?:Mode): Promise<string> {
 	
@@ -563,32 +597,17 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
         
         try {
             const systemPrompt = getSystemPromt(modifiedContent, modeOverride);
-            let userContent = modifiedContent;
-            let messages;
 
-            if (modeOverride == "Chat"){
-                // Initialize chat history
-                if (chatHistory.length == 0) {
-                    chatHistory.push({ role:"system", content: systemPrompt});
-                }
+            if (modeOverride) {
+                currentMode = modeOverride;
+            }
 
-                chatHistory.push({role:"user", content:modifiedContent});
-                messages = chatHistory;
-            } else {
-                // code related modes, no history needed since code itself is self-explainable
-                messages = [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: modifiedContent }
-                ];
-            }
-            /* if (modeOverride != "Chat"){
-                userContent = `Analyze this code and suggest improvements or missing knowledge:\n\n${modifiedContent}` ;
-            }
-            
-            if (chatHistory.length == 0) {
-                chatHistory.push({ role: "system", content: systemPrompt});
-            }
-            chatHistory.push({role:"user", content:modifiedContent}); */
+            // Always push both user input and assistant response regardless of mode
+            const userMessage = { role: "user" as const, content: modifiedContent, mode: currentMode };
+            const systemMessage = { role: "system" as const, content: systemPrompt };
+
+            // Build messages to send to OpenAI
+            const messages = [systemMessage, ...getFilteredMessagesForMode(currentMode), userMessage];
 
             const response = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: "POST",
@@ -606,16 +625,15 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
             if (!response.ok) {
                 const errorData = await response.json() as { error?: { message: string } };
                 const errorMessage = errorData.error?.message || "Unknown error";
-                
-                // Check if it's an authentication error
-                if (response.status === 401 || 
-                    errorMessage.includes("authentication") || 
+
+                if (response.status === 401 ||
+                    errorMessage.includes("authentication") ||
                     errorMessage.includes("API key")) {
-                    
+
                     vscode.window.showErrorMessage(`OpenAI API Authentication Error: ${errorMessage}`);
-                    apiKey = undefined; // Reset the API key to trigger re-entry
+                    apiKey = undefined;
                     retryCount++;
-                    continue; // Skip to the next iteration to retry
+                    continue;
                 } else {
                     vscode.window.showErrorMessage(`OpenAI API Error: ${errorMessage}`);
                     return "API request failed";
@@ -624,17 +642,17 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
 
             const data = await response.json() as OpenAIResponse;
             const content = data.choices?.[0]?.message?.content || "No response from OpenAI";
+
+            // Always update chat history
+            chatHistory.push(userMessage);
+            chatHistory.push({ role: "assistant", content, mode: currentMode });
+
             if (displayInPanel) {
                 ChatPanel.createOrShow(extensionContext.extensionUri, extensionContext);
                 ChatPanel.postMessage({ command: 'showResponse', text: content });
                 return "";
             }
 
-            // only upte chathistory when in chat mode
-            if (modeOverride === "Chat") {
-                chatHistory.push({ role: "assistant", content });
-            }
-            
             return content;
 
         } catch (error) {
