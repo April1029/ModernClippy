@@ -2,6 +2,9 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { ChatPanel } from './ChatPanel';
+import * as fs from 'fs';
+// @ts-ignore
+import * as pdfParse from 'pdf-parse';
 
 interface OpenAIResponse {
     choices?: { message?: { content: string } }[];
@@ -199,19 +202,25 @@ context.subscriptions.push(disposable); */
         
         const preview = formatted || "Chat history is currently empty.";
     
-        vscode.window.showInformationMessage("Chat history preview copied to clipboard.");
+        vscode.window.setStatusBarMessage("Chat history preview copied to clipboard.");
         vscode.env.clipboard.writeText(preview);
     });
     
     context.subscriptions.push(showChatHistoryCommand);
+
+    const scanAllCommand = vscode.commands.registerCommand('modern-clippy.scanAllFiles', async () => {
+        await analyzeAllFilesInWorkspace();
+    });
+    context.subscriptions.push(scanAllCommand);
+    
     
 }
 
 function startModernClippy(context: vscode.ExtensionContext) {
-	vscode.window.showInformationMessage("Modern Clippy is now enabled!");
+	vscode.window.setStatusBarMessage("Modern Clippy is now enabled!");
 
 	let disposable = vscode.commands.registerCommand('modern-clippy.start', () => {
-		vscode.window.showInformationMessage("Modern Clippy is here to help you!");
+		vscode.window.setStatusBarMessage("Modern Clippy is here to help you!");
 	});
 	context.subscriptions.push(disposable);
 }
@@ -220,6 +229,91 @@ function startModernClippy(context: vscode.ExtensionContext) {
 export function deactivate() { 
     chatHistory = [];
 }
+
+async function getAllFilesInWorkspace(): Promise<vscode.Uri[]> {
+    const includePattern = '**/*.{ts,js,py,txt,json,md,pdf}';
+    const excludePattern = '**/node_modules/**';
+
+    const files = await vscode.workspace.findFiles(includePattern, excludePattern);
+    return files;
+}
+
+
+async function extractTextFromPDF(filePath: string): Promise<string> {
+    const dataBuffer = fs.readFileSync(filePath);
+    const pdfData = await pdfParse(dataBuffer);
+    return pdfData.text;
+}
+
+async function analyzeAllFilesInWorkspace() {
+    const files = await getAllFilesInWorkspace();
+
+    for (const file of files) {
+        const filePath = file.fsPath;
+        const ext = filePath.split('.').pop()?.toLowerCase();
+
+        let content = '';
+
+        if (ext === 'pdf') {
+            content = await extractTextFromPDF(filePath);
+        } else {
+            const doc = await vscode.workspace.openTextDocument(file);
+            content = doc.getText();
+        }
+
+        if (content.trim()) {
+            await buildKnowledgeMapFromText(filePath, content);
+        }
+    }
+
+    vscode.window.setStatusBarMessage("Finished scanning all workspace files!");
+}
+
+async function buildKnowledgeMapFromText(fileName: string, content: string) {
+    const language = fileName.endsWith('.pdf') ? 'pdf' :
+        fileName.endsWith('.ts') ? 'typescript' :
+        fileName.endsWith('.js') ? 'javascript' :
+        fileName.endsWith('.py') ? 'python' :
+        'plaintext';
+
+    const imports = extractImports(content, language);
+    const unusedImports = findUnusedImports(imports, content);
+    const functions = extractFunctions(content, language);
+    const variables = extractVariables(content, language);
+    const concepts = extractConcepts(content, language);
+    const now = Date.now();
+
+    knowledgeMap.files[fileName] = {
+        language,
+        imports,
+        functions,
+        variables,
+        dependencies: imports,
+        concepts,
+        lastModified: now,
+        unusedImports,
+    };
+
+    // Update global summary
+    knowledgeMap.global.functions.push(...functions);
+    knowledgeMap.global.libraries.push(...imports);
+
+    for (const [concept, count] of Object.entries(concepts)) {
+        knowledgeMap.global.concepts[concept] =
+            (knowledgeMap.global.concepts[concept] || 0) + count;
+    }
+}
+
+async function buildKnowledgeMap() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+
+    const fileName = editor.document.fileName;
+    const fileContent = editor.document.getText();
+    
+    await buildKnowledgeMapFromText(fileName, fileContent);
+}
+
 
 async function analyzeFile() {
 	const editor = vscode.window.activeTextEditor;
@@ -230,7 +324,7 @@ async function analyzeFile() {
 
 	const fileContent = editor.document.getText();
 	if (fileContent === lastSentContent) {
-		vscode.window.showInformationMessage("No changes in the file");
+		vscode.window.setStatusBarMessage("No changes in the file");
 		return;
 	}
 
@@ -270,7 +364,7 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
         }
         if (detected !== currentMode) {
             currentMode = detected;
-            vscode.window.showInformationMessage(`Clippy switched to ${currentMode} mode automatically.`);
+            vscode.window.setStatusBarMessage(`Clippy switched to ${currentMode} mode automatically.`);
         }
     }
 
@@ -347,7 +441,8 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
 	}
 }
 
-async function buildKnowledgeMap() {
+
+/* async function buildKnowledgeMap() {
     const editor = vscode.window.activeTextEditor;
     
     if (!editor) return;
@@ -393,7 +488,7 @@ async function buildKnowledgeMap() {
 
     //log knowledge map
     console.log("Knowledge Map Updated: ", knowledgeMap);
-}
+} */
 
 // Function to extract imports based on language
 function extractImports(fileContent: string, language: string): string[] {
@@ -554,13 +649,13 @@ function switchMode(mode: Mode) {
     // Provide mode-specific feedback
     switch (mode) {
         case "Tutor":
-            vscode.window.showInformationMessage("Modern Clippy is now in Tutor mode. I'll help you learn!");
+            vscode.window.setStatusBarMessage("Modern Clippy is now in Tutor mode. I'll help you learn!");
             break;
         case "Assistant":
-            vscode.window.showInformationMessage("Modern Clippy is now in Assistant mode. I'll help improve your code.");
+            vscode.window.setStatusBarMessage("Modern Clippy is now in Assistant mode. I'll help improve your code.");
             break;
         case "Debugger":
-            vscode.window.showInformationMessage("Modern Clippy is now in Debugger mode. I'll help find and fix issues.");
+            vscode.window.setStatusBarMessage("Modern Clippy is now in Debugger mode. I'll help find and fix issues.");
             break;
     }
 }

@@ -68,8 +68,11 @@
       {
         "command": "modern-clippy.showChatHistory",
         "title": "Modern Clippy: Show Chat History"
+      },
+      {
+        "command": "modern-clippy.scanAllFiles",
+        "title": "Modern Clippy: Scan All Files in Workspace"
       }
-
     ],
     "configuration": {
       "title": "Modern Clippy",
@@ -141,6 +144,7 @@
   },
   "dependencies": {
     "node-fetch": "^3.3.2",
-    "openai": "^4.93.0"
+    "openai": "^4.93.0",
+    "pdf-parse": "^1.1.1"
   }
 }
