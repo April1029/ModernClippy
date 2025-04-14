@@ -19,8 +19,6 @@ let chatHistory: {
     mode?: Mode 
 }[] = [];
 
-
-
 interface KnowledgeMap {
     files: {
         [fileName: string]: {
@@ -31,6 +29,7 @@ interface KnowledgeMap {
             dependencies: string[];
             concepts: { [concept: string]: number }; // frequency map
             lastModified: number;
+            unusedImports?: string[];
         };
     };
     global: {
@@ -350,17 +349,19 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
 
 async function buildKnowledgeMap() {
     const editor = vscode.window.activeTextEditor;
+    
     if (!editor) return;
 
     const fileName = editor.document.fileName;
     const fileContent = editor.document.getText();
     const fileLanguage = editor.document.languageId; // TypeScript, Python, etc.
-
     const imports = extractImports(fileContent, fileLanguage); // Custom function to extract imports
-    const functions = extractFunctions(fileContent); // Custom function to extract function names
-    const variables = extractVariables(fileContent); // Custom function to extract variable names
+    const unusedImports = findUnusedImports(imports,fileContent);
+    const functions = extractFunctions(fileContent,fileLanguage); // Custom function to extract function names
+    const variables = extractVariables(fileContent,fileLanguage); // Custom function to extract variable names
     const concepts = extractConcepts(fileContent, fileLanguage); // Custom function to extract concepts like loops, etc.
     const now = Date.now();
+   
 
     // Update the knowledge map for this specific file
     knowledgeMap.files[fileName] = {
@@ -371,6 +372,7 @@ async function buildKnowledgeMap() {
         dependencies: imports, // Can link dependencies here
         concepts,
         lastModified: now,
+        unusedImports
     };
 
      // Update global knowledge
@@ -424,30 +426,48 @@ function extractImports(fileContent: string, language: string): string[] {
     }
 }
 
-// Function to extract function names
-function extractFunctions(fileContent: string): string[] {
-    // TypeScript/JavaScript function extraction
-    const functionRegex = /(?:function\s+(\w+)|(\w+)\s*=\s*\(.*?\)\s*=>\s*{)/g;
+function extractFunctions(fileContent: string, language: string): string[] {
     const functions: string[] = [];
-    let match;
-    while ((match = functionRegex.exec(fileContent)) !== null) {
-        const funcName = match[1] || match[2];
-        if (funcName) functions.push(funcName);
+    
+    if (language === 'python') {
+        const pythonFunctionRegex = /^\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(.*?\)\s*:/gm;
+        let match;
+        while ((match = pythonFunctionRegex.exec(fileContent)) !== null) {
+            functions.push(match[1]);
+        }
+    } else {
+        const tsFunctionRegex = /(?:function\s+(\w+)|(\w+)\s*=\s*\(.*?\)\s*=>\s*{)/g;
+        let match;
+        while ((match = tsFunctionRegex.exec(fileContent)) !== null) {
+            const funcName = match[1] || match[2];
+            if (funcName) functions.push(funcName);
+        }
     }
+
     return functions;
 }
 
-// Function to extract variables
-function extractVariables(fileContent: string): string[] {
-    // Capture let, const, and var declarations
-    const variableRegex = /(?:let|const|var)\s+(\w+)/g;
+
+function extractVariables(fileContent: string, language: string): string[] {
     const variables: string[] = [];
-    let match;
-    while ((match = variableRegex.exec(fileContent)) !== null) {
-        variables.push(match[1]);
+
+    if (language === 'python') {
+        const pythonVariableRegex = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*[^=]/gm;
+        let match;
+        while ((match = pythonVariableRegex.exec(fileContent)) !== null) {
+            variables.push(match[1]);
+        }
+    } else {
+        const tsVariableRegex = /(?:let|const|var)\s+(\w+)/g;
+        let match;
+        while ((match = tsVariableRegex.exec(fileContent)) !== null) {
+            variables.push(match[1]);
+        }
     }
+
     return variables;
 }
+
 
 // Function to extract programming concepts
 function extractConcepts(fileContent: string, language: string): { [concept: string]: number } {
@@ -488,6 +508,15 @@ function extractConcepts(fileContent: string, language: string): { [concept: str
 
     return conceptCounts;
 }
+
+function findUnusedImports(imports: string[], fileContent: string): string[] {
+    return imports.filter(imp => {
+        const usagePattern = new RegExp(`\\b${imp}\\b`, 'g');
+        const matches = fileContent.match(usagePattern);
+        return !matches || matches.length <= 1; // One match is likely the import itself
+    });
+}
+
 
 function summarizeKnowledgeMap(): string {
 	const fileSummaries = Object.entries(knowledgeMap.files).map(([file, data]) => {
@@ -609,6 +638,9 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
             const userMessage = { role: "user" as const, content: modifiedContent, mode: currentMode };
             const systemMessage = { role: "system" as const, content: systemPrompt };
 
+            // Push system prompt to chat history (for debugging purpose)
+            // chatHistory.push({ role: "system", content: systemPrompt, mode: currentMode });
+
             // Build messages to send to OpenAI
             const messages = [systemMessage, ...getFilteredMessagesForMode(currentMode), userMessage];
 
@@ -645,10 +677,13 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
 
             const data = await response.json() as OpenAIResponse;
             const content = data.choices?.[0]?.message?.content || "No response from OpenAI";
+            //console.log("content",content)
+            
 
             // Always update chat history
             chatHistory.push(userMessage);
             chatHistory.push({ role: "assistant", content, mode: currentMode });
+            //console.log("ChatHistory",chatHistory)
 
             if (displayInPanel) {
                 ChatPanel.createOrShow(extensionContext.extensionUri, extensionContext);

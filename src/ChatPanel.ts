@@ -647,7 +647,7 @@ export class ChatPanel {
                 window.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => {
                         appendMessage("👋 Hi there! I'm your coding assistant. How can I help you today?", 'clippy');
-                    }, 300);
+                    }, 0);
                 });
             </script>
         </body>
