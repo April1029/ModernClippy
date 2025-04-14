@@ -198,8 +198,6 @@ context.subscriptions.push(disposable); */
             }
         ).join('\n\n');
         
-        
-    
         const preview = formatted || "Chat history is currently empty.";
     
         vscode.window.showInformationMessage("Chat history preview copied to clipboard.");
@@ -262,14 +260,19 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
 
     const combined = `${contextHints} ${userPrompt.toLowerCase()}`;
 
-    if (modeOverride) {
+    if (modeOverride && modeOverride !== currentMode) {
         currentMode = modeOverride;
-    } else if (/debug|error|exception|fix|broken/.test(combined)) {
-        currentMode = "Debugger";
-    } else if (/optimize|improve|refactor/.test(combined)) {
-        currentMode = "Assistant";
     } else {
-        currentMode = "Tutor";
+        let detected: Mode = "Tutor";
+        if (/debug|error|exception|fix|broken/.test(combined)) {
+            detected = "Debugger";
+        } else if (/optimize|improve|refactor/.test(combined)) {
+            detected = "Assistant";
+        }
+        if (detected !== currentMode) {
+            currentMode = detected;
+            vscode.window.showInformationMessage(`Clippy switched to ${currentMode} mode automatically.`);
+        }
     }
 
 	switch (currentMode) {
@@ -547,7 +550,7 @@ function getFilteredMessagesForMode(mode: Mode): { role: 'system' | 'user' | 'as
                 msg.role === 'system' || 
                 msg.role === 'assistant' ||
                 (msg.role === 'user' ) // optional: skip huge prior inputs && msg.content.length < 2000
-            ).slice(-6); // optional: only last 6 interactions
+            ).slice(-2); // optional: only last 2 interactions
         default:
             return chatHistory;
     }
@@ -598,7 +601,7 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
         try {
             const systemPrompt = getSystemPromt(modifiedContent, modeOverride);
 
-            if (modeOverride) {
+            if (modeOverride ) {
                 currentMode = modeOverride;
             }
 
