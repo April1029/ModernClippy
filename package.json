@@ -72,6 +72,14 @@
       {
         "command": "modern-clippy.scanAllFiles",
         "title": "Modern Clippy: Scan All Files in Workspace"
+      },
+      {
+        "command": "modern-clippy.previewPDFText",
+        "title": "Modern Clippy: Preview Extracted PDF Text"
+      },
+      {
+        "command": "modern-clippy.setAssignmentContext",
+        "title": "Modern Clippy: Set Assignment Context File"
       }
     ],
     "configuration": {
@@ -119,6 +127,7 @@
           "command": "modern-clippy.disable",
           "when": "modernClippyEnabled"
         }
+        
       ]
     }
   },

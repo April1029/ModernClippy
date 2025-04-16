@@ -4,8 +4,9 @@ import * as vscode from 'vscode';
 import { ChatPanel } from './ChatPanel';
 import * as fs from 'fs';
 // @ts-ignore
-import * as pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 
+// OpenAI Response structure
 interface OpenAIResponse {
     choices?: { message?: { content: string } }[];
     error?: { message: string };
@@ -21,7 +22,10 @@ let chatHistory: {
     content: string, 
     mode?: Mode 
 }[] = [];
+let assignmentPromptAlreadySent = false;
 
+
+// Data structure for storing analyzed knowledge across files
 interface KnowledgeMap {
     files: {
         [fileName: string]: {
@@ -39,9 +43,11 @@ interface KnowledgeMap {
         functions: string[];
         libraries: string[];
         concepts: { [concept: string]: number };
+        assignmentPrompt ?: string; 
     };
 }
 
+// Initialize an empty knowledge map
 let knowledgeMap: KnowledgeMap = {
     files: {},
     global: {
@@ -54,7 +60,7 @@ let knowledgeMap: KnowledgeMap = {
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
 	extensionContext = context;
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
@@ -83,10 +89,10 @@ context.subscriptions.push(disposable); */
 
 	if (!enabled) {
 		vscode.window.showInformationMessage("Hello from Modern Clippy! Is it the right time to start the adventure with me?", "Yes", "No")
-			.then((selection) => {
+			.then(async (selection) => {
 				if (selection === "Yes") {
 					context.globalState.update('modernClippyEnabled', true);
-					startModernClippy(context);
+					await startModernClippy(context);
 					vscode.window.showInformationMessage("Great! I'm here to help you! ");
 				}
 				if (selection === "No") {
@@ -94,17 +100,17 @@ context.subscriptions.push(disposable); */
 				}
 			});
 	} else {
-		startModernClippy(context);
+		await startModernClippy(context);
 
 	}
 
 	// Register the command to enable Modern Clippy manually
 	let enableModernClippy = vscode.commands.registerCommand('modern-clippy.enable', () => {
 		vscode.window.showInformationMessage("Enable Modern Clippy now?", "Yes", "No")
-			.then((selection) => {
+			.then( async(selection) => {
 				if (selection === "Yes") {
 					context.globalState.update('modernClippyEnabled', true);
-					startModernClippy(context);
+					await startModernClippy(context);
 					vscode.window.showInformationMessage("Great! I'm here to help you! ");
 				}
 			});
@@ -152,12 +158,14 @@ context.subscriptions.push(disposable); */
 	});
 	context.subscriptions.push(openAICommand);
 
+    // Interact with OpenAI from Chat 
     let askOpenAIFromPanelCommand = vscode.commands.registerCommand('modern-clippy.askOpenAIFromPanel', async (text: string, mode?: Mode) => {
         const response = await callOpenAI(text, false, mode);
         return response;
     });
     context.subscriptions.push(askOpenAIFromPanelCommand);
 
+    // Open Chat
     let openChatCommand = vscode.commands.registerCommand('modern-clippy.openChat', async() => {
         await buildKnowledgeMap();
 		ChatPanel.createOrShow(extensionContext.extensionUri, extensionContext);
@@ -212,20 +220,93 @@ context.subscriptions.push(disposable); */
         await analyzeAllFilesInWorkspace();
     });
     context.subscriptions.push(scanAllCommand);
+
+    let previewPDFTextCommand = vscode.commands.registerCommand('modern-clippy.previewPDFText', async () => {
+        const fileUri = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            filters: { "PDF files": ["pdf"] },
+            openLabel: "Select a PDF file to preview its content"
+        });
+    
+        if (!fileUri || fileUri.length === 0) {
+            vscode.window.showInformationMessage("No PDF file selected.");
+            return;
+        }
+    
+        try {
+            const filePath = fileUri[0].fsPath;
+            const extractedText = await extractTextFromPDF(filePath);
+    
+            // Display a portion of the PDF content in an information message or output channel
+            const preview = extractedText|| "[No content extracted]";  // .slice(0, 1000) 
+            const output = vscode.window.createOutputChannel("Modern Clippy - PDF Preview");
+            output.clear();
+            output.appendLine(`📝 Extracted text from ${filePath}:\n\n${preview}`);
+            output.show();
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to extract PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    });
+    context.subscriptions.push(previewPDFTextCommand);
+
+    let setAssignmentContextCommand = vscode.commands.registerCommand('modern-clippy.setAssignmentContext', async () => {
+        const fileUri = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            filters: {
+                "Context files": ["pdf", "md", "txt"],
+                "All files": ["*"]
+            },
+            openLabel: "Select assignment file"
+        });
+    
+        if (!fileUri || fileUri.length === 0) {
+            vscode.window.showInformationMessage("No file selected.");
+            return;
+        }
+    
+        try {
+            const filePath = fileUri[0].fsPath;
+            let content = "";
+    
+            const ext = filePath.split('.').pop()?.toLowerCase();
+            if (ext === 'pdf') {
+                content = await extractTextFromPDF(filePath);
+            } else {
+                content = fs.readFileSync(filePath, 'utf-8');
+            }
+    
+            if (content.trim().length === 0) {
+                vscode.window.showWarningMessage("Selected file is empty.");
+                return;
+            }
+    
+            knowledgeMap.global.assignmentPrompt = content;
+            vscode.window.showInformationMessage("Assignment context stored in knowledge map.");
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to load assignment content: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+    });
+    context.subscriptions.push(setAssignmentContextCommand);
+    
     
     
 }
 
-function startModernClippy(context: vscode.ExtensionContext) {
+
+
+async function startModernClippy(context: vscode.ExtensionContext) {
 	vscode.window.setStatusBarMessage("Modern Clippy is now enabled!");
 
 	let disposable = vscode.commands.registerCommand('modern-clippy.start', () => {
 		vscode.window.setStatusBarMessage("Modern Clippy is here to help you!");
 	});
 	context.subscriptions.push(disposable);
+
+    // Auto-scan all files in the workspace
+    await analyzeAllFilesInWorkspace();
 }
 
-// This method is called when your extension is deactivated
+// This method is called when the extension is deactivated
 export function deactivate() { 
     chatHistory = [];
 }
@@ -367,6 +448,12 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
             vscode.window.setStatusBarMessage(`Clippy switched to ${currentMode} mode automatically.`);
         }
     }
+
+    const assignmentContext = !assignmentPromptAlreadySent && knowledgeMap.global.assignmentPrompt
+        ? `Assignment Context:\n${knowledgeMap.global.assignmentPrompt}\n\n`
+        : "";
+
+    assignmentPromptAlreadySent = true;
 
 	switch (currentMode) {
 		case "Tutor":
@@ -629,6 +716,7 @@ function summarizeKnowledgeMap(): string {
     const globalConceptList = Object.entries(knowledgeMap.global.concepts)
         .map(([concept, count]) => `${concept} (${count})`)
         .join(', ') || 'None';
+    
 
 	const globalSummary = `**Global Summary**
 - Libraries: ${knowledgeMap.global.libraries.join(', ') || 'None'}
