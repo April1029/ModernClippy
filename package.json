@@ -80,6 +80,10 @@
       {
         "command": "modern-clippy.setAssignmentContext",
         "title": "Modern Clippy: Set Assignment Context File"
+      },
+      {
+        "command": "modern-clippy.showAssignmentContext",
+        "title": "Modern Clippy: Show Assignment Context File"
       }
     ],
     "configuration": {

@@ -287,6 +287,26 @@ context.subscriptions.push(disposable); */
         }
     });
     context.subscriptions.push(setAssignmentContextCommand);
+
+    const showAssignmentContextCommand = vscode.commands.registerCommand('modern-clippy.showAssignmentContext', async () => {
+        const contextText = knowledgeMap.global.assignmentPrompt;
+    
+        if (!contextText || contextText.trim() === "") {
+            vscode.window.showWarningMessage("No assignment context is currently set.");
+            return;
+        }
+    
+        const output = vscode.window.createOutputChannel("Modern Clippy - Assignment Context");
+        output.clear();
+        output.appendLine("📘 Assignment Context Preview\n");
+        output.appendLine(contextText.length > 2000
+            ? contextText.slice(0, 2000) + "\n\n[...truncated]"
+            : contextText
+        );
+        output.show(true);
+    });
+    context.subscriptions.push(showAssignmentContextCommand);
+    
     
     
     
@@ -328,23 +348,59 @@ async function extractTextFromPDF(filePath: string): Promise<string> {
 
 async function analyzeAllFilesInWorkspace() {
     const files = await getAllFilesInWorkspace();
+    const assignmentCandidates: { label: string; uri: vscode.Uri }[] = [];
+
 
     for (const file of files) {
+
         const filePath = file.fsPath;
         const ext = filePath.split('.').pop()?.toLowerCase();
+        const baseName = filePath.split('/').pop() || "";
 
         let content = '';
 
-        if (ext === 'pdf') {
-            content = await extractTextFromPDF(filePath);
-        } else {
-            const doc = await vscode.workspace.openTextDocument(file);
-            content = doc.getText();
+        if (['pdf', 'md', 'txt'].includes(ext ||"")) {
+            console.log("📘 Detected possible assignment file:", filePath);
+            assignmentCandidates.push({ label: baseName, uri: file });
         }
 
-        if (content.trim()) {
-            await buildKnowledgeMapFromText(filePath, content);
+        try {
+            const content = ext === 'pdf'
+                ? await extractTextFromPDF(filePath)
+                : fs.readFileSync(filePath, 'utf-8');
+
+            if (content.trim()) {
+                await buildKnowledgeMapFromText(filePath, content);
+            }
+        } catch (err) {
+            vscode.window.showWarningMessage(`Failed to parse ${filePath}: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
+    }
+
+    // Defer QuickPick prompt just slightly to ensure UI is ready
+    if (!knowledgeMap.global.assignmentPrompt && assignmentCandidates.length > 0) {
+        setTimeout(async () => {
+            const picked = await vscode.window.showQuickPick(
+                assignmentCandidates.map(c => ({
+                    label: c.label,
+                    description: 'Use as assignment context',
+                    detail: c.uri.fsPath
+                })),
+                { placeHolder: "📘 Select the file that contains the assignment prompt" }
+            );
+
+            if (picked) {
+                const ext = picked.label.split('.').pop()?.toLowerCase();
+                const content = ext === 'pdf'
+                    ? await extractTextFromPDF(picked.detail)
+                    : fs.readFileSync(picked.detail, 'utf-8');
+
+                if (content.trim()) {
+                    knowledgeMap.global.assignmentPrompt = content;
+                    vscode.window.showInformationMessage(`📘 Assignment context loaded from: ${picked.label}`);
+                }
+            }
+        }, 300); // Slight delay to let VS Code UI catch up
     }
 
     vscode.window.setStatusBarMessage("Finished scanning all workspace files!");
