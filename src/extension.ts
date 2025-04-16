@@ -840,10 +840,10 @@ function buildInitialSystemPrompt(
     console.log("📘 Assignment Context (first 100 chars):", contextFileContent.slice(0, 100));
     console.log("🤖 Base System Prompt (first 100 chars):", basePrompt.slice(0, 100));
 
-    const combinedPrompt = `You are helping the user based on the following context.\n\n` +
-        `### Assignment Context\n${contextFileContent}\n\n` +
-        `### System Instructions\n${basePrompt}`;
-    
+    const combinedPrompt = `${basePrompt}\n\n` +
+        `Here is your assignment context:\n\n` +
+        `${contextFileContent}\n\n`;
+
     console.log("🧠 Combined System Prompt Preview (first 300 chars):", combinedPrompt.slice(0, 300));
 
     return { role: "system", content: combinedPrompt };
