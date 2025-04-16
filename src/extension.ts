@@ -312,8 +312,6 @@ context.subscriptions.push(disposable); */
     
 }
 
-
-
 async function startModernClippy(context: vscode.ExtensionContext) {
 	vscode.window.setStatusBarMessage("Modern Clippy is now enabled!");
 
@@ -824,6 +822,34 @@ function getFilteredMessagesForMode(mode: Mode): { role: 'system' | 'user' | 'as
     }
 }
 
+function buildInitialSystemPrompt(
+    content: string,
+    modeOverride?: Mode
+): { role: "system"; content: string } {
+    const basePrompt = getSystemPromt(content, modeOverride);
+
+    const contextFileContent = knowledgeMap.global.assignmentPrompt?.trim();
+    if (!contextFileContent) {
+        console.log("⚠️ No assignment context found in knowledgeMap.global.assignmentPrompt.");
+        console.log("🔧 Using base system prompt only:", basePrompt);
+        return { role: "system", content: basePrompt };
+    }
+
+    // Debug: Log what’s being included
+    console.log("✅ Building full system prompt with assignment context.");
+    console.log("📘 Assignment Context (first 100 chars):", contextFileContent.slice(0, 100));
+    console.log("🤖 Base System Prompt (first 100 chars):", basePrompt.slice(0, 100));
+
+    const combinedPrompt = `You are helping the user based on the following context.\n\n` +
+        `### Assignment Context\n${contextFileContent}\n\n` +
+        `### System Instructions\n${basePrompt}`;
+    
+    console.log("🧠 Combined System Prompt Preview (first 300 chars):", combinedPrompt.slice(0, 300));
+
+    return { role: "system", content: combinedPrompt };
+}
+
+
 
 async function callOpenAI(modifiedContent: string, displayInPanel = false, modeOverride?:Mode): Promise<string> {
 	
@@ -867,21 +893,34 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
         }
         
         try {
-            const systemPrompt = getSystemPromt(modifiedContent, modeOverride);
-
             if (modeOverride ) {
                 currentMode = modeOverride;
             }
 
             // Always push both user input and assistant response regardless of mode
             const userMessage = { role: "user" as const, content: modifiedContent, mode: currentMode };
-            const systemMessage = { role: "system" as const, content: systemPrompt };
+            // const systemMessage = { role: "system" as const, content: systemPrompt };
+            let systemMessage: { role: "system"; content: string } | null = null;
+
+            if (!assignmentPromptAlreadySent && knowledgeMap.global.assignmentPrompt) {
+                systemMessage = buildInitialSystemPrompt(modifiedContent, modeOverride);
+                assignmentPromptAlreadySent = true;
+            }
 
             // Push system prompt to chat history (for debugging purpose)
-            // chatHistory.push({ role: "system", content: systemPrompt, mode: currentMode });
+            //chatHistory.push({ role: "system", content: systemPrompt, mode: currentMode });
 
             // Build messages to send to OpenAI
-            const messages = [systemMessage, ...getFilteredMessagesForMode(currentMode), userMessage];
+            const baseMessages = [
+                ...(systemMessage ? [systemMessage] : []),
+                ...getFilteredMessagesForMode(currentMode)
+            ];
+
+            const messages = [...baseMessages, userMessage];
+            console.log("📨 Messages sent:", messages.map(m => ({
+                role: m.role,
+                preview: m.content // just the first 100 chars
+            })));
 
             const response = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: "POST",
