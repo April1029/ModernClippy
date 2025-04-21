@@ -57,9 +57,6 @@ let knowledgeMap: KnowledgeMap = {
     },
 };
 
-
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
 	extensionContext = context;
 
@@ -197,9 +194,6 @@ context.subscriptions.push(disposable); */
     context.subscriptions.push(refreshKnowledgeMapCommand);
 
     let showChatHistoryCommand = vscode.commands.registerCommand('modern-clippy.showChatHistory', () => {
-        /* const formatted = chatHistory.map(
-            (entry, index) => `${index + 1}. **${entry.role}**: ${entry.content}...`
-        ).join('\n\n'); */
 
         const formatted = chatHistory.map(
             (entry, index) => {
@@ -306,8 +300,6 @@ context.subscriptions.push(disposable); */
         output.show(true);
     });
     context.subscriptions.push(showAssignmentContextCommand);
-    
-    
     
     
 }
@@ -583,54 +575,6 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
 }
 
 
-/* async function buildKnowledgeMap() {
-    const editor = vscode.window.activeTextEditor;
-    
-    if (!editor) return;
-
-    const fileName = editor.document.fileName;
-    const fileContent = editor.document.getText();
-    const fileLanguage = editor.document.languageId; // TypeScript, Python, etc.
-    const imports = extractImports(fileContent, fileLanguage); // Custom function to extract imports
-    const unusedImports = findUnusedImports(imports,fileContent);
-    const functions = extractFunctions(fileContent,fileLanguage); // Custom function to extract function names
-    const variables = extractVariables(fileContent,fileLanguage); // Custom function to extract variable names
-    const concepts = extractConcepts(fileContent, fileLanguage); // Custom function to extract concepts like loops, etc.
-    const now = Date.now();
-   
-
-    // Update the knowledge map for this specific file
-    knowledgeMap.files[fileName] = {
-        language: fileLanguage,
-        imports,
-        functions,
-        variables,
-        dependencies: imports, // Can link dependencies here
-        concepts,
-        lastModified: now,
-        unusedImports
-    };
-
-     // Update global knowledge
-     knowledgeMap.global.functions = Array.from(new Set([
-        ...knowledgeMap.global.functions,
-        ...functions
-    ]));
-
-    knowledgeMap.global.libraries = Array.from(new Set([
-        ...knowledgeMap.global.libraries,
-        ...imports
-    ]));
-
-    for (const [concept, count] of Object.entries(concepts)) {
-        knowledgeMap.global.concepts[concept] =
-            (knowledgeMap.global.concepts[concept] || 0) + count;
-    }
-
-    //log knowledge map
-    console.log("Knowledge Map Updated: ", knowledgeMap);
-} */
-
 // Function to extract imports based on language
 function extractImports(fileContent: string, language: string): string[] {
     switch (language) {
@@ -753,7 +697,6 @@ function findUnusedImports(imports: string[], fileContent: string): string[] {
     });
 }
 
-
 function summarizeKnowledgeMap(): string {
 	const fileSummaries = Object.entries(knowledgeMap.files).map(([file, data]) => {
         const conceptList = Object.entries(data.concepts)
@@ -784,26 +727,9 @@ ${fileSummaries}
 ${globalSummary}`;
 }
 
-// Modify the mode switching functionality
-function switchMode(mode: Mode) {
-    currentMode = mode;
-    
-    // Provide mode-specific feedback
-    switch (mode) {
-        case "Tutor":
-            vscode.window.setStatusBarMessage("Modern Clippy is now in Tutor mode. I'll help you learn!");
-            break;
-        case "Assistant":
-            vscode.window.setStatusBarMessage("Modern Clippy is now in Assistant mode. I'll help improve your code.");
-            break;
-        case "Debugger":
-            vscode.window.setStatusBarMessage("Modern Clippy is now in Debugger mode. I'll help find and fix issues.");
-            break;
-    }
-}
 
 function getFilteredMessagesForMode(mode: Mode): { role: 'system' | 'user' | 'assistant', content: string }[] {
-    const relevantRoles = ['system', 'user', 'assistant'];
+    const firstMessage = chatHistory.length > 0 ? [chatHistory[0]]:[];
 
     // we want different filters per mode
     switch (mode) {
@@ -812,11 +738,12 @@ function getFilteredMessagesForMode(mode: Mode): { role: 'system' | 'user' | 'as
         case "Debugger":
         case "Assistant":
         case "Tutor":
-            return chatHistory.filter(msg =>
+            const recent = chatHistory.slice(1).filter(msg =>
                 msg.role === 'system' || 
                 msg.role === 'assistant' ||
-                (msg.role === 'user' ) // optional: skip huge prior inputs && msg.content.length < 2000
+                (msg.role === 'user' ) 
             ).slice(-2); // optional: only last 2 interactions
+            return [...firstMessage, ...recent];
         default:
             return chatHistory;
     }
@@ -825,28 +752,37 @@ function getFilteredMessagesForMode(mode: Mode): { role: 'system' | 'user' | 'as
 function buildInitialSystemPrompt(
     content: string,
     modeOverride?: Mode
-): { role: "system"; content: string } {
+): { role: "system"; content: string } | null {
+    if (!knowledgeMap.global.assignmentPrompt || assignmentPromptAlreadySent ){
+        return null;
+    }
     const basePrompt = getSystemPromt(content, modeOverride);
-
     const contextFileContent = knowledgeMap.global.assignmentPrompt?.trim();
     if (!contextFileContent) {
-        console.log("⚠️ No assignment context found in knowledgeMap.global.assignmentPrompt.");
-        console.log("🔧 Using base system prompt only:", basePrompt);
-        return { role: "system", content: basePrompt };
+        console.log("No assignment context found in knowledgeMap.global.assignmentPrompt.");
+        console.log("Using base system prompt only:", basePrompt);
+        return null;
     }
 
     // Debug: Log what’s being included
-    console.log("✅ Building full system prompt with assignment context.");
-    console.log("📘 Assignment Context (first 100 chars):", contextFileContent.slice(0, 100));
-    console.log("🤖 Base System Prompt (first 100 chars):", basePrompt.slice(0, 100));
+    console.log("Building full system prompt with assignment context.");
+    console.log("Assignment Context (first 100 chars):", contextFileContent.slice(0, 100));
+    console.log("Base System Prompt (first 100 chars):", basePrompt.slice(0, 100));
 
     const combinedPrompt = `${basePrompt}\n\n` +
         `Here is your assignment context:\n\n` +
         `${contextFileContent}\n\n`;
 
-    console.log("🧠 Combined System Prompt Preview (first 300 chars):", combinedPrompt.slice(0, 300));
+    console.log("Combined System Prompt Preview (first 300 chars):", combinedPrompt.slice(0, 300));
+    // Push once to chat history
+    chatHistory.unshift({
+        role: "system",
+        content: combinedPrompt,
+        mode: currentMode
+    });
 
-    return { role: "system", content: combinedPrompt };
+    assignmentPromptAlreadySent = true;
+    return null;
 }
 
 
@@ -902,10 +838,7 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
             // const systemMessage = { role: "system" as const, content: systemPrompt };
             let systemMessage: { role: "system"; content: string } | null = null;
 
-            if (!assignmentPromptAlreadySent && knowledgeMap.global.assignmentPrompt) {
-                systemMessage = buildInitialSystemPrompt(modifiedContent, modeOverride);
-                assignmentPromptAlreadySent = true;
-            }
+            buildInitialSystemPrompt(modifiedContent, modeOverride);
 
             // Push system prompt to chat history (for debugging purpose)
             //chatHistory.push({ role: "system", content: systemPrompt, mode: currentMode });
@@ -919,7 +852,7 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
             const messages = [...baseMessages, userMessage];
             console.log("📨 Messages sent:", messages.map(m => ({
                 role: m.role,
-                preview: m.content // just the first 100 chars
+                preview: m.content 
             })));
 
             const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -955,7 +888,6 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
 
             const data = await response.json() as OpenAIResponse;
             const content = data.choices?.[0]?.message?.content || "No response from OpenAI";
-            //console.log("content",content)
             
 
             // Always update chat history
