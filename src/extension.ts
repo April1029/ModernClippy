@@ -445,7 +445,7 @@ async function buildKnowledgeMap() {
 async function analyzeFile() {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor) {
-		vscode.window.showErrorMessage("Open a file to analyze");
+		// vscode.window.showErrorMessage("Open a file to analyze");
 		return;
 	}
 
@@ -475,19 +475,17 @@ function getSimpleDiff(oldContent:string, newContent:string): string {
 }
 
 function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
-
-    const contextHints = Object.keys(knowledgeMap.global.concepts).join(", ").toLowerCase();
-
-    const combined = `${contextHints} ${userPrompt.toLowerCase()}`;
-
     if (modeOverride && modeOverride !== currentMode) {
         currentMode = modeOverride;
     } else {
         let detected: Mode = "Tutor";
-        if (/debug|error|exception|fix|broken/.test(combined)) {
+        if (/ (debug|error|exception|fix|broken) /.test(userPrompt.toLowerCase())) {
             detected = "Debugger";
-        } else if (/optimize|improve|refactor/.test(combined)) {
+            console.log(userPrompt);
+            console.log("Mode is now Debugger");
+        } else if (/ (optimize|improve|refactor) /.test(userPrompt.toLowerCase())) {
             detected = "Assistant";
+            console.log("Mode is now Assistant");
         }
         if (detected !== currentMode) {
             currentMode = detected;
@@ -519,14 +517,22 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
             - If necessary, use partial code snippets or pseudocode to illustrate ideas, but avoid providing complete solutions.
             Respond in markdown format.`; */
 
-            return `You are a patient programming tutor.
-            Guide the user to think critically by:
-            - Asking helpful questions instead of giving direct answers.
-            - Pointing out what concepts are missing.
-            - Suggesting what to look into next.
-            - If necessary, use partial code snippets or pseudocode to illustrate ideas, but avoid providing complete solutions.
-            Respond in markdown format. Keep it short and focused.
-            - One step at a time.`;
+            return `You are a patient, minimalist programming tutor.
+            Your job is to guide the user's thinking, not solve problems for them.
+            Follow these rules:
+            - Ask one short, focused question at a time.
+            - Do not explain too much. Let the user do the thinking.
+            - Give short, clear feedback if the user's response is correct, close, or off-track.
+            - Point out what is missing or needs work, but do not fix it all.
+            - Respond in markdown format. Keep it short and focused.
+            - Always prefer guiding over explaining.
+            - One step at a time. Be brief, supportive, and strategic.
+            - If the user says "I don't know", don't repeat the question. Instead:
+               Offer a tiny hint,
+               Or ask a simpler sub-question,
+               Or give a 1 to 2 line example to clarify.
+            - You are not allowed to return code that more than 5 lines.
+            `;
 
        /*  case "Assistant":
             return "You're a helpful coding assistant. Suggest improvements and productivity tips."; */
@@ -559,9 +565,11 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
                 - Use emojis when helpful 😄.
                 - Add fun programming facts or jokes if the user seems relaxed.
                 - Don't overexplain unless asked.
+                - If necessary, use partial code snippets or pseudocode to illustrate ideas, 
+                - You are not allowed to return code that more than 5 lines.
                 - Encourage curiosity, and be encouraging!`;
             
-        default:
+        /* default:
             return `You are a versatile programming helper.
                 Your approach should be:
                     - Friendly and approachable, focusing on the user's immediate needs.
@@ -570,7 +578,7 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
                     - Clear in your explanations, using analogies and examples where helpful.
                     - Precise with your code examples, using proper markdown formatting.
                     - Mindful of best practices while remaining practical.
-                    - Responsive to the user's expertise level, adjusting your language accordingly.`;
+                    - Responsive to the user's expertise level, adjusting your language accordingly.`; */
 	}
 }
 
@@ -742,7 +750,7 @@ function getFilteredMessagesForMode(mode: Mode): { role: 'system' | 'user' | 'as
                 msg.role === 'system' || 
                 msg.role === 'assistant' ||
                 (msg.role === 'user' ) 
-            ).slice(-2); // optional: only last 2 interactions
+            ).slice(-2);
             return [...firstMessage, ...recent];
         default:
             return chatHistory;
