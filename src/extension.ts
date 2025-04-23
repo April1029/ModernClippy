@@ -117,7 +117,7 @@ context.subscriptions.push(disposable); */
 
 	// Register the command to scan the document periodically
 	// Set up the interval to periodically scan the file
-	let scanInterval = setInterval(() => analyzeFile(), 20000); // 20 seconds
+	let scanInterval = setInterval(() => analyzeFile(), 40000); // 40 seconds
 	context.subscriptions.push({ dispose: () => clearInterval(scanInterval) });
 
 	let analyzeFileCommand = vscode.commands.registerCommand('modern-clippy.analyzeFile', async () => {
@@ -479,11 +479,11 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
         currentMode = modeOverride;
     } else {
         let detected: Mode = "Tutor";
-        if (/ (debug|error|exception|fix|broken) /.test(userPrompt.toLowerCase())) {
+        if ((/\b(debug|error|exception|fix|broken)\b/).test(userPrompt.toLowerCase())) {
             detected = "Debugger";
             console.log(userPrompt);
             console.log("Mode is now Debugger");
-        } else if (/ (optimize|improve|refactor) /.test(userPrompt.toLowerCase())) {
+        } else if ((/\boptimize|improve|refactor\b/).test(userPrompt.toLowerCase())) {
             detected = "Assistant";
             console.log("Mode is now Assistant");
         }
@@ -493,11 +493,6 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
         }
     }
 
-    const assignmentContext = !assignmentPromptAlreadySent && knowledgeMap.global.assignmentPrompt
-        ? `Assignment Context:\n${knowledgeMap.global.assignmentPrompt}\n\n`
-        : "";
-
-    assignmentPromptAlreadySent = true;
 
 	switch (currentMode) {
 		case "Tutor":
@@ -521,17 +516,16 @@ function getSystemPromt(userPrompt: string = "", modeOverride?: Mode): string{
             Your job is to guide the user's thinking, not solve problems for them.
             Follow these rules:
             - Ask one short, focused question at a time.
-            - Do not explain too much. Let the user do the thinking.
+            - Do not explain too much. Let the user do the thinking. Always prefer guiding over explaining.
             - Give short, clear feedback if the user's response is correct, close, or off-track.
             - Point out what is missing or needs work, but do not fix it all.
-            - Respond in markdown format. Keep it short and focused.
-            - Always prefer guiding over explaining.
             - One step at a time. Be brief, supportive, and strategic.
             - If the user says "I don't know", don't repeat the question. Instead:
                Offer a tiny hint,
                Or ask a simpler sub-question,
                Or give a 1 to 2 line example to clarify.
             - You are not allowed to return code that more than 5 lines.
+            - Respond in markdown format. Keep it short and focused.
             `;
 
        /*  case "Assistant":
@@ -794,7 +788,6 @@ function buildInitialSystemPrompt(
 }
 
 
-
 async function callOpenAI(modifiedContent: string, displayInPanel = false, modeOverride?:Mode): Promise<string> {
 	
     let apiKey = await extensionContext.secrets.get('openai-api-key');
@@ -846,7 +839,13 @@ async function callOpenAI(modifiedContent: string, displayInPanel = false, modeO
             // const systemMessage = { role: "system" as const, content: systemPrompt };
             let systemMessage: { role: "system"; content: string } | null = null;
 
-            buildInitialSystemPrompt(modifiedContent, modeOverride);
+            if (!assignmentPromptAlreadySent && knowledgeMap.global.assignmentPrompt) {
+                buildInitialSystemPrompt(modifiedContent, modeOverride);
+            } else {
+                const basePrompt = getSystemPromt(modifiedContent, modeOverride);
+                systemMessage = { role: "system", content: basePrompt };
+            }
+            
 
             // Push system prompt to chat history (for debugging purpose)
             //chatHistory.push({ role: "system", content: systemPrompt, mode: currentMode });
